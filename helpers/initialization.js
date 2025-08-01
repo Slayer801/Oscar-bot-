@@ -30,7 +30,7 @@ const sRouter = new web3.eth.Contract(SushiswapRouter.abi, config.SUSHISWAP.V3_R
 
 const qFactory = new web3.eth.Contract(qSwapFactory.abi, config.QUICKSWAP.FACTORY_ADDRESS) // QUICKSWAP FACTORY CONTRACT
 const qRouter = new web3.eth.Contract(qSwapRouter.abi, config.QUICKSWAP.V3_ROUTER_02_ADDRESS)
-const IArbitrage = require('../build/contracts/Flashloan.json')
+const IArbitrage = require('../contracts/artifacts/Flashloan.json')
 //const arbitrage = new web3.eth.Contract(IArbitrage.abi, IArbitrage.networks[1].address);
 const arbitrage = new web3.eth.Contract(IArbitrage.abi, "0x601F064dB72129d5E58412A158Fa2b35a2Fd302f");
 
