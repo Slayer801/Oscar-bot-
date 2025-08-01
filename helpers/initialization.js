@@ -1,7 +1,7 @@
 require("dotenv").config();
 const config = require('../config.json')
 const HDWalletProvider = require('@truffle/hdwallet-provider');
-const Web3 = require('web3')
+const { Web3 } = require('web3')
 let web3
 
 if (!config.PROJECT_SETTINGS.isLocal) {

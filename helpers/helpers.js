@@ -2,7 +2,7 @@ require("dotenv").config();
 const config = require("../config.json")
 
 const Big = require('big.js');
-const Web3 = require('web3');
+const { Web3 } = require('web3');
 let web3
 
 if (!config.PROJECT_SETTINGS.isLocal) {
