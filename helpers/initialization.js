@@ -7,7 +7,7 @@ let web3
 if (!config.PROJECT_SETTINGS.isLocal) {
     let provider = new HDWalletProvider({
         privateKeys: [process.env.DEPLOYMENT_ACCOUNT_KEY],
-        providerOrUrl: `wss://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        providerOrUrl: `wss://polygon-mainnet.infura.io/ws/v3/${process.env.INFURA_API_KEY}`
     })
     web3 = new Web3(provider)   
 } else {
