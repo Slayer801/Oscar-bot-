@@ -6,8 +6,25 @@ const { Web3 } = require('web3');
 let web3
 
 if (!config.PROJECT_SETTINGS.isLocal) {
+    if (!process.env.INFURA_API_KEY) {
+        console.error('INFURA_API_KEY environment variable is not set. Please add it to your secrets.');
+        process.exit(1);
+    }
     //web3 = new Web3(`wss://polygon-mainnet.infura.io/v3/${process.env.INFURA_API_KEY }`)
-    web3 = new Web3(`wss://polygon-mainnet.infura.io/ws/v3/${process.env.INFURA_API_KEY}`)
+    const provider = new Web3.providers.WebsocketProvider(`wss://polygon-mainnet.infura.io/ws/v3/${process.env.INFURA_API_KEY}`);
+    
+    provider.on('error', (error) => {
+        console.error('WebSocket Error:', error.message);
+        if (error.message.includes('401')) {
+            console.error('Authentication failed. Please check your INFURA_API_KEY.');
+        }
+    });
+    
+    provider.on('end', () => {
+        console.log('WebSocket connection ended. Attempting to reconnect...');
+    });
+    
+    web3 = new Web3(provider);
 } else {
     web3 = new Web3('ws://127.0.0.1:7545')
 }
