@@ -16,5 +16,5 @@ task = "shell.exec"
 args = "node bot.js"
 
 [[ports]]
-localPort = 5011
+localPort = 5000
 externalPort = 80
