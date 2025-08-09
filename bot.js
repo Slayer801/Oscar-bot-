@@ -1,7 +1,7 @@
 var cluster = require('cluster');
 if (cluster.isMaster) {
 cluster.fork();
-
+const keep_alive = require('./keep_alive.js');
 cluster.on('exit', function(worker, code, signal) {
 cluster.fork();
 });
