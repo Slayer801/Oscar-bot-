@@ -20,9 +20,15 @@ const sFactory = new web3.eth.Contract(factoryABI, SUSHISWAP_FACTORY_ADDRESS); c
 
 const qFactory = new web3.eth.Contract(factoryABI, QUICKSWAP_FACTORY_ADDRESS); const qRouter = new web3.eth.Contract(routerABI, QUICKSWAP_ROUTER_ADDRESS);
 
-console.log("Contract address from .env:", process.env.ARBITRAGE_CONTRACT_ADDRESS);
+const arbitrageABI = require("../abis/Arbitrage.json");
+const arbitrageAddress = process.env.ARBITRAGE_CONTRACT_ADDRESS;
 
-const contract = new web3.eth.Contract(ABI, process.env.ARBITRAGE_CONTRACT_ADDRESS);
+let arbitrage = null;
 
-module.exports = { web3, uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, arbitrage, };
+if (arbitrageAddress && arbitrageAddress !== "") {
+  arbitrage = new web3.eth.Contract(arbitrageABI, arbitrageAddress);
+  console.log("Arbitrage contract loaded at:", arbitrageAddress);
+} else {
+  console.warn("ARBITRAGE_CONTRACT_ADDRESS is missing. Arbitrage contract not loaded.");
+}
 
