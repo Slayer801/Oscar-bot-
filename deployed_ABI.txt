@@ -1,5 +1,4 @@
 Deployed at: 0xaeAd1557bf84681968667b428fa75252a8b84092
-
 [
 	{
 		"inputs": [
@@ -7,71 +6,30 @@ Deployed at: 0xaeAd1557bf84681968667b428fa75252a8b84092
 				"internalType": "address",
 				"name": "_addressProvider",
 				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_sRouter",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_uRouter",
-				"type": "address"
 			}
 		],
 		"stateMutability": "nonpayable",
 		"type": "constructor"
 	},
 	{
-		"anonymous": false,
-		"inputs": [
+		"inputs": [],
+		"name": "ADDRESSES_PROVIDER",
+		"outputs": [
 			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "_from",
-				"type": "address"
-			},
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "_assetAddress",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "amount",
-				"type": "uint256"
-			}
-		],
-		"name": "LogWithdraw",
-		"type": "event"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "previousOwner",
-				"type": "address"
-			},
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "newOwner",
+				"internalType": "contract IPoolAddressesProvider",
+				"name": "",
 				"type": "address"
 			}
 		],
-		"name": "OwnershipTransferred",
-		"type": "event"
+		"stateMutability": "view",
+		"type": "function"
 	},
 	{
 		"inputs": [],
-		"name": "addressesProvider",
+		"name": "POOL",
 		"outputs": [
 			{
-				"internalType": "contract ILendingPoolAddressesProvider",
+				"internalType": "contract IPool",
 				"name": "",
 				"type": "address"
 			}
@@ -83,78 +41,38 @@ Deployed at: 0xaeAd1557bf84681968667b428fa75252a8b84092
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "_reserve",
+				"name": "asset",
 				"type": "address"
 			},
 			{
 				"internalType": "uint256",
-				"name": "_amount",
+				"name": "amount",
 				"type": "uint256"
 			},
 			{
 				"internalType": "uint256",
-				"name": "_fee",
+				"name": "premium",
 				"type": "uint256"
 			},
 			{
+				"internalType": "address",
+				"name": "initiator",
+				"type": "address"
+			},
+			{
 				"internalType": "bytes",
-				"name": "_params",
+				"name": "params",
 				"type": "bytes"
 			}
 		],
 		"name": "executeOperation",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
+		"outputs": [
 			{
 				"internalType": "bool",
-				"name": "_startOnUniswap",
+				"name": "",
 				"type": "bool"
-			},
-			{
-				"internalType": "address",
-				"name": "_token0",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "_token1",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_flashAmount",
-				"type": "uint256"
 			}
 		],
-		"name": "executeTrade",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "_asset",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_amount",
-				"type": "uint256"
-			},
-			{
-				"internalType": "bytes",
-				"name": "_params",
-				"type": "bytes"
-			}
-		],
-		"name": "flashloan",
-		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
 	},
@@ -172,56 +90,28 @@ Deployed at: 0xaeAd1557bf84681968667b428fa75252a8b84092
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "renounceOwnership",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "sRouter",
-		"outputs": [
+		"inputs": [
 			{
-				"internalType": "contract ISwapRouter",
-				"name": "",
+				"internalType": "address",
+				"name": "token",
 				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
 			}
 		],
-		"stateMutability": "view",
+		"name": "requestFlashLoan",
+		"outputs": [],
+		"stateMutability": "nonpayable",
 		"type": "function"
 	},
 	{
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "newOwner",
-				"type": "address"
-			}
-		],
-		"name": "transferOwnership",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "uRouter",
-		"outputs": [
-			{
-				"internalType": "contract ISwapRouter",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "_assetAddress",
+				"name": "token",
 				"type": "address"
 			}
 		],
@@ -229,9 +119,5 @@ Deployed at: 0xaeAd1557bf84681968667b428fa75252a8b84092
 		"outputs": [],
 		"stateMutability": "nonpayable",
 		"type": "function"
-	},
-	{
-		"stateMutability": "payable",
-		"type": "receive"
 	}
 ]
