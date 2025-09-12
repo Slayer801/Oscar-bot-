@@ -16,7 +16,7 @@ require("dotenv").config();
 
 const config = require('./config.json')  
 const { getTokenAndContract, getPairContract, calculatePrice, calculatePriceSixAndEighteen, calculatePriceNineAndEighteen, calculatePriceSixAndNine, getEstimatedReturn, getReserves } = require('./helpers/helpers')  
-const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage } = require('./helpers/initialization')  
+const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer } = require('./helpers/initialization')  
 
 // -- .ENV VALUES HERE -- //  
 
@@ -213,12 +213,46 @@ const determineProfitability = async (_routerPath, _token0Contract, _token0, _to
         let amountInEth = web3.utils.fromWei(token0In, 'ether');
         let amountOutEth = web3.utils.fromWei(token0Out, 'ether');
 
+        // Calculate profit in TOKEN_1 (proper decimal handling)
         const profit = amountOutEth - amountInEth;
-        const totalGasCost = parseFloat(process.env.GAS_PRICE);
-        const netProfit = profit - totalGasCost;
+        
+        // Get dynamic gas pricing for accurate cost estimation
+        const gasPrices = await gasOptimizer.getCurrentGasPrices();
+        gasOptimizer.logGasInfo(gasPrices, 'fastest');
+        
+        // Determine direction for gas estimation
+        const tempStartOnQuickswap = (_routerPath[0]._address == qRouter._address);
+        
+        // Estimate actual gas cost for the arbitrage transaction
+        const tempTx = {
+            from: account,
+            to: arbitrage._address,
+            data: arbitrage.methods.executeTrade(tempStartOnQuickswap, _token0.address, _token1.address, token0In).encodeABI()
+        };
+        const estimatedGasUnits = await gasOptimizer.estimateGasWithBuffer(tempTx);
+        const gasPrice = await gasOptimizer.getOptimalGasPrice('fastest');
+        
+        // Convert gas cost to TOKEN_1 units by getting MATIC->TOKEN_1 exchange rate
+        const totalGasCostWei = BigInt(gasPrice) * BigInt(estimatedGasUnits);
+        const gasCostMatic = parseFloat(web3.utils.fromWei(totalGasCostWei.toString(), 'ether'));
+        
+        // Get MATIC price in TOKEN_1 terms using router
+        let gasCostInToken1 = 0;
+        try {
+            // Try to get accurate MATIC->TOKEN_1 conversion using router
+            const maticAmount = web3.utils.toWei(gasCostMatic.toString(), 'ether');
+            const path = ['0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270', _token0.address]; // WMATIC -> TOKEN_1
+            const amounts = await _routerPath[0].methods.getAmountsOut(maticAmount, path).call();
+            gasCostInToken1 = parseFloat(web3.utils.fromWei(amounts[1], 'ether'));
+        } catch (error) {
+            console.log('⚠️ Could not get MATIC->TOKEN_1 price, skipping gas cost in profit calc');
+            gasCostInToken1 = 0; // Conservative: don't subtract unknown gas cost
+        }
+        
+        const netProfit = profit - gasCostInToken1;
 
         console.log(`Estimated Profit: ${profit} TOKEN_1`);
-        console.log(`Estimated Gas Cost: ${totalGasCost} ETH`);
+        console.log(`Estimated Gas Cost: ${gasCostMatic} MATIC (${gasPrices.fastest} gwei) = ${gasCostInToken1} TOKEN_1`);
         console.log(`Net Profit: ${netProfit} TOKEN_1\n`);
 
         if (netProfit > 0) {
@@ -262,25 +296,31 @@ const executeTrade = async (_routerPath, _token0Contract, _token1Contract) => {
     }  
     */  
 
-    // data: ABI byte string containing the data of the function call on a contract  
-    if (config.PROJECT_SETTINGS.isDeployed) {  
-        const approvalTransaction = {  
-            'from' : account,  
-            'to' : _token0Contract._address,  
-            'data' : _token0Contract.methods.approve(arbitrage._address, amount).encodeABI()  
-        }  
-        const transaction = {  
-            'from' : account,  
-            'to' : _token0Contract._address,  
-            'data' : arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).encodeABI(),  
-            'gas' : gas  
-              
-        }  
-        const signedApprovalTx = await web3.eth.accounts.signTransaction(approvalTransaction, process.env.DEPLOYMENT_ACCOUNT_KEY)  
-        const signedTx = await web3.eth.accounts.signTransaction(transaction, process.env.DEPLOYMENT_ACCOUNT_KEY)  
-        //await arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).send({ from: account, gas: gas })  
-        await web3.eth.sendSignedTransaction(signedApprovalTx.rawTransaction)  
-        await web3.eth.sendSignedTransaction(signedTx.rawTransaction)  
+    // ⚡ OPTIMIZED SINGLE-TRANSACTION EXECUTION WITH DYNAMIC GAS PRICING
+    if (config.PROJECT_SETTINGS.isDeployed) {
+        console.log('🚀 Executing optimized flash loan arbitrage...');
+        
+        // Single optimized transaction - no approval needed for flash loans
+        const arbitrageTransaction = {
+            'from': account,
+            'to': arbitrage._address,
+            'data': arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).encodeABI()
+        };
+        
+        // Optimize transaction with dynamic gas pricing
+        const optimizedTx = await gasOptimizer.createOptimizedTransaction(arbitrageTransaction, 'fastest');
+        
+        console.log(`⚡ Gas Price: ${web3.utils.fromWei(optimizedTx.gasPrice, 'gwei')} gwei`);
+        console.log(`⚡ Gas Limit: ${optimizedTx.gas}`);
+        
+        // Sign and send single optimized transaction
+        const signedTx = await web3.eth.accounts.signTransaction(optimizedTx, process.env.DEPLOYMENT_ACCOUNT_KEY);
+        
+        // Execute flash loan arbitrage in one transaction
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+        console.log(`✅ Flash loan arbitrage tx: ${receipt.transactionHash}`);
+        
+        return receipt;
     }  
 
 

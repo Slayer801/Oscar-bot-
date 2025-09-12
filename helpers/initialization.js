@@ -31,8 +31,12 @@ const sRouter = new web3.eth.Contract(SushiswapRouter.abi, config.SUSHISWAP.V3_R
 const qFactory = new web3.eth.Contract(qSwapFactory.abi, config.QUICKSWAP.FACTORY_ADDRESS) // QUICKSWAP FACTORY CONTRACT
 const qRouter = new web3.eth.Contract(qSwapRouter.abi, config.QUICKSWAP.V3_ROUTER_02_ADDRESS)
 const IArbitrage = require('../contracts/artifacts/Flashloan.json')
+const GasOptimizer = require('./gasOptimizer')
 //const arbitrage = new web3.eth.Contract(IArbitrage.abi, IArbitrage.networks[1].address);
 const arbitrage = new web3.eth.Contract(IArbitrage.abi, "0xaeAd1557bf84681968667b428fa75252a8b84092");
+
+// Initialize gas optimizer
+const gasOptimizer = new GasOptimizer(web3);
 
 module.exports = {
     uFactory,
@@ -42,5 +46,6 @@ module.exports = {
     qFactory,
     qRouter,
     web3,
-    arbitrage
+    arbitrage,
+    gasOptimizer
 }
