@@ -16,7 +16,7 @@ require("dotenv").config();
 
 const config = require('./config.json')  
 const { getTokenAndContract, getPairContract, calculatePrice, calculatePriceSixAndEighteen, calculatePriceNineAndEighteen, calculatePriceSixAndNine, getEstimatedReturn, getReserves } = require('./helpers/helpers')  
-const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer } = require('./helpers/initialization')  
+const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer, mempoolMonitor } = require('./helpers/initialization')  
 
 // -- .ENV VALUES HERE -- //  
 
@@ -29,73 +29,87 @@ const gas = process.env.GAS_LIMIT
 const estimatedGasCost = process.env.GAS_PRICE // Estimated Gas  
 
 let uPair, sPair, amount  
-let isExecuting = false  
+let isExecuting = false
+
+// Unified arbitrage opportunity handler
+const handleMempoolOpportunity = async (opportunity) => {
+    if (isExecuting) {
+        console.log('⚠️ Mempool opportunity detected but bot is busy executing another trade');
+        return;
+    }
+    
+    console.log(`
+⚡ MEMPOOL ARBITRAGE OPPORTUNITY DETECTED!`);
+    console.log(`Pair: ${opportunity.pairKey}`);
+    console.log(`Router: ${opportunity.swapInfo.router}`);
+    console.log(`TX Hash: ${opportunity.swapInfo.hash}`);
+    
+    // Execute the same arbitrage logic as event-based detection
+    await executeArbitrageFlow('Mempool', opportunity.token0, opportunity.token1);
+};
+
+// Unified arbitrage execution flow
+const executeArbitrageFlow = async (source, token0Address, token1Address) => {
+    if (isExecuting) return;
+    
+    isExecuting = true;
+    
+    try {
+        // Get token contracts
+        const { token0Contract, token1Contract, token0, token1 } = await getTokenAndContract(token0Address, token1Address);
+        
+        const priceDifference = await checkPrice(source, token0, token1);
+        const routerPath = await determineDirection(priceDifference);
+
+        if (!routerPath) {
+            console.log(`No Arbitrage Currently Available\n`);
+            console.log(`-----------------------------------------\n`);
+            return;
+        }
+
+        const isProfitable = await determineProfitability(routerPath, token0Contract, token0, token1);
+
+        if (!isProfitable) {
+            console.log(`No Arbitrage Currently Available\n`);
+            console.log(`-----------------------------------------\n`);
+            return;
+        }
+
+        const receipt = await executeTrade(routerPath, token0Contract, token1Contract);
+        console.log(`✅ ${source} arbitrage executed successfully!`);
+        
+    } catch (error) {
+        console.error(`❌ ${source} arbitrage failed:`, error.message);
+    } finally {
+        isExecuting = false;
+    }
+};  
 
 const main = async () => {  
     const { token0Contract, token1Contract, token0, token1 } = await getTokenAndContract(arbFor, arbAgainst)  
     uPair = await getPairContract(qFactory, token0.address, token1.address)  
     sPair = await getPairContract(sFactory, token0.address, token1.address)  
 
+    // Configure mempool monitoring for our target pair
+    mempoolMonitor.addTargetPair(token0.address, token1.address);
+    
+    // Start mempool monitoring with arbitrage opportunity callback
+    await mempoolMonitor.startMonitoring(handleMempoolOpportunity);
+
 
     uPair.events.Swap({}, async () => {  
-        if (!isExecuting) {  
-            isExecuting = true  
-
-            const priceDifference = await checkPrice('Quickswap', token0, token1)  
-            const routerPath = await determineDirection(priceDifference)  
-
-            if (!routerPath) {  
-                console.log(`No Arbitrage Currently Available\n`)  
-                console.log(`-----------------------------------------\n`)  
-                isExecuting = false  
-                return  
-            }  
-
-            const isProfitable = await determineProfitability(routerPath, token0Contract, token0, token1)  
-
-            if (!isProfitable) {  
-                console.log(`No Arbitrage Currently Available\n`)  
-                console.log(`-----------------------------------------\n`)  
-                isExecuting = false  
-                return  
-            }  
-
-            const receipt = await executeTrade(routerPath, token0Contract, token1Contract)  
-
-            isExecuting = false  
-        }  
+        await executeArbitrageFlow('Quickswap Event', token0.address, token1.address);
     })  
 
     sPair.events.Swap({}, async () => {  
-        if (!isExecuting) {  
-            isExecuting = true  
-
-            const priceDifference = await checkPrice('Sushiswap', token0, token1)  
-            const routerPath = await determineDirection(priceDifference)  
-
-            if (!routerPath) {  
-                console.log(`No Arbitrage Currently Available\n`)  
-                console.log(`-----------------------------------------\n`)  
-                isExecuting = false  
-                return  
-            }  
-
-            const isProfitable = await determineProfitability(routerPath, token0Contract, token0, token1)  
-
-            if (!isProfitable) {  
-                console.log(`No Arbitrage Currently Available\n`)  
-                console.log(`-----------------------------------------\n`)  
-                isExecuting = false  
-                return  
-            }  
-
-            const receipt = await executeTrade(routerPath, token0Contract, token1Contract)  
-
-            isExecuting = false  
-        }  
+        await executeArbitrageFlow('Sushiswap Event', token0.address, token1.address);
     })  
 
-    console.log("Waiting for swap event...")  
+    console.log("🔍 Bot Active:");
+    console.log("📊 Event-based monitoring: Waiting for swap events...");
+    console.log("⚡ Mempool monitoring: Scanning pending transactions...");
+    console.log("🎯 Target pair: " + token0.symbol + "/" + token1.symbol);
+    console.log("💰 Min profit threshold: " + (parseFloat(difference) * 100).toFixed(2) + "%\n");
 
 }  
 

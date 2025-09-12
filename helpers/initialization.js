@@ -32,11 +32,17 @@ const qFactory = new web3.eth.Contract(qSwapFactory.abi, config.QUICKSWAP.FACTOR
 const qRouter = new web3.eth.Contract(qSwapRouter.abi, config.QUICKSWAP.V3_ROUTER_02_ADDRESS)
 const IArbitrage = require('../contracts/artifacts/Flashloan.json')
 const GasOptimizer = require('./gasOptimizer')
+const MempoolMonitor = require('./mempoolMonitor')
 //const arbitrage = new web3.eth.Contract(IArbitrage.abi, IArbitrage.networks[1].address);
 const arbitrage = new web3.eth.Contract(IArbitrage.abi, "0xaeAd1557bf84681968667b428fa75252a8b84092");
 
-// Initialize gas optimizer
+// Initialize gas optimizer and mempool monitor
 const gasOptimizer = new GasOptimizer(web3);
+const mempoolMonitor = new MempoolMonitor(web3, config);
+
+// Configure mempool monitor with DEX routers
+mempoolMonitor.addDexRouter('Quickswap', config.QUICKSWAP.V3_ROUTER_02_ADDRESS);
+mempoolMonitor.addDexRouter('Sushiswap', config.SUSHISWAP.V3_ROUTER_02_ADDRESS);
 
 module.exports = {
     uFactory,
@@ -47,5 +53,6 @@ module.exports = {
     qRouter,
     web3,
     arbitrage,
-    gasOptimizer
+    gasOptimizer,
+    mempoolMonitor
 }
