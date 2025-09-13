@@ -33,7 +33,7 @@ const qRouter = new web3.eth.Contract(qSwapRouter.abi, config.QUICKSWAP.V3_ROUTE
 const IArbitrage = require('../contracts/artifacts/Flashloan.json')
 const GasOptimizer = require('./gasOptimizer')
 const MempoolMonitor = require('./mempoolMonitor')
-const MEVRelay = require('./mevRelay')
+const PolygonMEVRelay = require('./polygonMevRelay')
 //const arbitrage = new web3.eth.Contract(IArbitrage.abi, IArbitrage.networks[1].address);
 const arbitrage = new web3.eth.Contract(IArbitrage.abi, "0xaeAd1557bf84681968667b428fa75252a8b84092");
 
@@ -41,13 +41,13 @@ const arbitrage = new web3.eth.Contract(IArbitrage.abi, "0xaeAd1557bf84681968667
 const gasOptimizer = new GasOptimizer(web3);
 const mempoolMonitor = new MempoolMonitor(web3, config);
 
-// Initialize MEV relay
-const mevRelay = new MEVRelay({
+// Initialize Polygon MEV relay (bloXroute)
+const polygonMevRelay = new PolygonMEVRelay({
     web3,
-    account: process.env.ACCOUNT,
-    flashloanContract: arbitrage,
-    contractAddress: "0xaeAd1557bf84681968667b428fa75252a8b84092",
-    helpers: require('./helpers')
+    arbitrage,
+    qRouter,
+    sRouter,
+    gasOptimizer
 });
 
 // Configure mempool monitor with DEX routers
@@ -65,5 +65,5 @@ module.exports = {
     arbitrage,
     gasOptimizer,
     mempoolMonitor,
-    mevRelay
+    polygonMevRelay
 }

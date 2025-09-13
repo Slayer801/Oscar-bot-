@@ -12,6 +12,7 @@
     "@truffle/hdwallet-provider": "^2.1.15",
     "@uniswap/sdk": "^3.0.3",
     "@uniswap/v3-periphery": "^1.4.4",
+    "axios": "^1.12.1",
     "big.js": "^7.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",

@@ -16,7 +16,7 @@ require("dotenv").config();
 
 const config = require('./config.json')  
 const { getTokenAndContract, getPairContract, calculatePrice, calculatePriceSixAndEighteen, calculatePriceNineAndEighteen, calculatePriceSixAndNine, getEstimatedReturn, getReserves } = require('./helpers/helpers')  
-const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer, mempoolMonitor, mevRelay } = require('./helpers/initialization')  
+const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer, mempoolMonitor, polygonMevRelay } = require('./helpers/initialization')  
 
 // -- .ENV VALUES HERE -- //  
 
@@ -90,9 +90,9 @@ const main = async () => {
     uPair = await getPairContract(qFactory, token0.address, token1.address)  
     sPair = await getPairContract(sFactory, token0.address, token1.address)  
 
-    // Initialize MEV relay for private bundle submission
-    console.log('🚀 Initializing MEV Relay for competitive arbitrage...');
-    await mevRelay.initialize();
+    // Initialize Polygon MEV relay for private transaction submission
+    console.log('🚀 Initializing Polygon MEV Relay for competitive arbitrage...');
+    await polygonMevRelay.initialize();
 
     // Configure mempool monitoring for our target pair
     mempoolMonitor.addTargetPair(token0.address, token1.address);
@@ -114,8 +114,8 @@ const main = async () => {
     console.log("⚡ Mempool monitoring: Scanning pending transactions...");
     console.log("🎯 Target pair: " + token0.symbol + "/" + token1.symbol);
     console.log("💰 Min profit threshold: " + (parseFloat(difference) * 100).toFixed(2) + "%");
-    console.log("🏆 MEV Relay: " + (mevRelay.isConnected() ? "Connected" : "Disconnected"));
-    console.log("📡 Bundle submission: Private relay (no front-running)\n");
+    console.log("🏆 Polygon MEV Relay: " + (polygonMevRelay.isConnected() ? "Connected" : "Disconnected"));
+    console.log("📡 Private transactions: bloXroute (front-running protection)\n");
 
 }  
 
@@ -316,12 +316,12 @@ const executeTrade = async (_routerPath, _token0Contract, _token1Contract) => {
     }  
     */  
 
-    // 🎯 MEV RELAY BUNDLE EXECUTION - PRIVATE MEMPOOL
+    // 🎯 POLYGON MEV PRIVATE TRANSACTION EXECUTION
     if (config.PROJECT_SETTINGS.isDeployed) {
-        console.log('🏆 Executing MEV arbitrage bundle...');
+        console.log('🏆 Executing Polygon MEV private transaction...');
         
-        if (!mevRelay.isConnected()) {
-            console.log('⚠️ MEV Relay not connected, falling back to public transaction');
+        if (!polygonMevRelay.isConnected()) {
+            console.log('⚠️ Polygon MEV Relay not connected, falling back to public transaction');
             
             // Fallback to public transaction
             const arbitrageTransaction = {
@@ -338,59 +338,36 @@ const executeTrade = async (_routerPath, _token0Contract, _token1Contract) => {
             return receipt;
         }
 
-        // Create arbitrage opportunity object for bundle construction
-        const opportunity = {
-            tokenAddresses: {
-                USDC: _token0Contract._address,
-                WETH: _token1Contract._address
-            },
-            dex1: { router: startOnQuickswap ? qRouter._address : sRouter._address },
-            dex2: { router: startOnQuickswap ? sRouter._address : qRouter._address },
-            amountIn: amount,
-            direction: startOnQuickswap
-        };
-
-        // Get optimal gas configuration
-        const gasPrices = await gasOptimizer.getCurrentGasPrices();
-        const gasConfig = {
-            gasLimit: 500000, // Flash loan gas limit
-            maxFeePerGas: web3.utils.toWei(gasPrices.fastest.toString(), 'gwei'),
-            maxPriorityFeePerGas: web3.utils.toWei((gasPrices.fastest * 0.1).toString(), 'gwei')
-        };
-
         try {
-            // Create MEV bundle
-            const bundleData = await mevRelay.createArbitrageBundle(opportunity, gasConfig);
+            // Create private arbitrage transaction 
+            const privateTx = await polygonMevRelay.createPrivateArbitrageTx(
+                _routerPath, 
+                _token0Contract, 
+                _token1Contract, 
+                amount, 
+                account
+            );
             
-            // Simulate bundle first
-            const simulation = await mevRelay.simulateBundle(bundleData);
-            if (!simulation.success) {
-                console.log('❌ Bundle simulation failed:', simulation.error);
-                throw new Error('Bundle simulation failed: ' + simulation.error);
-            }
-            
-            console.log(`✅ Bundle simulation successful - estimated profit: ${simulation.profit} wei`);
-            
-            // Submit bundle to MEV relay
-            const submission = await mevRelay.submitBundle(bundleData);
+            // Submit to bloXroute private mempool
+            const submission = await polygonMevRelay.submitPrivateTransaction(privateTx.signedTransaction);
             
             if (submission.success) {
-                console.log(`🎯 MEV bundle submitted successfully!`);
-                console.log(`📦 Bundle hash: ${submission.bundleHash}`);
-                console.log(`🎯 Target block: ${submission.targetBlock}`);
-                console.log(`🏆 Protected from front-running - private relay execution`);
+                console.log(`🎯 Private arbitrage transaction submitted successfully!`);
+                console.log(`📦 Transaction hash: ${submission.txHash}`);
+                console.log(`🏆 Front-running protection: ACTIVE`);
+                console.log(`⚡ Private mempool routing: 400-1000ms faster`);
                 
                 return {
-                    bundleHash: submission.bundleHash,
-                    targetBlock: submission.targetBlock,
-                    type: 'mev_bundle'
+                    transactionHash: submission.txHash,
+                    type: 'private_transaction',
+                    protection: 'front_running_protected'
                 };
             } else {
-                throw new Error('Bundle submission failed: ' + submission.error);
+                throw new Error('Private transaction submission failed: ' + submission.error);
             }
             
         } catch (error) {
-            console.error('❌ MEV bundle execution failed:', error.message);
+            console.error('❌ Private transaction execution failed:', error.message);
             console.log('🔄 Falling back to public transaction...');
             
             // Fallback to public transaction
