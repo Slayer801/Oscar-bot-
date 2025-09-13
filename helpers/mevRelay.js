@@ -1,5 +1,5 @@
 const { FlashbotsBundleProvider } = require('@flashbots/ethers-provider-bundle');
-const { ethers } = require('ethers');
+const ethers = require('ethers');
 
 class MEVRelay {
     constructor(config) {
@@ -23,10 +23,10 @@ class MEVRelay {
                 throw new Error('INFURA_API_KEY required for MEV relay');
             }
             
-            this.provider = new ethers.providers.JsonRpcProvider(providerUrl);
+            this.provider = new ethers.JsonRpcProvider(providerUrl);
             
             // Create auth signer for Flashbots relay
-            this.authSigner = new ethers.Wallet(ethers.Wallet.createRandom().privateKey);
+            this.authSigner = ethers.Wallet.createRandom();
             
             // Initialize Flashbots provider (targeting Polygon mainnet)
             this.flashbotsProvider = await FlashbotsBundleProvider.create(
@@ -220,9 +220,9 @@ class MEVRelay {
     calculateBundleHash(bundle) {
         // Create a deterministic hash for bundle tracking
         const txHashes = bundle.map(tx => 
-            ethers.utils.keccak256(tx.signedTransaction)
+            ethers.keccak256(tx.signedTransaction)
         );
-        return ethers.utils.keccak256(ethers.utils.concat(txHashes));
+        return ethers.keccak256(ethers.concat(txHashes));
     }
 
     isConnected() {
