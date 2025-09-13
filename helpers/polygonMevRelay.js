@@ -1,48 +1,76 @@
-const axios = require('axios');
+const WebSocket = require('ws');
 
 class PolygonMEVRelay {
     constructor(config) {
         this.config = config;
-        this.baseUrl = 'https://api.bloxroute.com';
+        this.wsUrl = 'wss://api.blxrbdn.com/ws';
         this.connected = false;
-        this.apiKey = null;
+        this.authHeader = null;
+        this.websocket = null;
+        this.requestId = 1;
     }
 
     async initialize() {
         try {
             console.log('🚀 Initializing Polygon MEV Relay (bloXroute)...');
             
-            // Check for bloXroute API key (can be added later)
-            this.apiKey = process.env.BLOXROUTE_API_KEY;
-            if (!this.apiKey) {
-                console.log('⚠️ BLOXROUTE_API_KEY not found - using free tier');
+            // Check for bloXroute authorization header
+            this.authHeader = process.env.BLOXROUTE_AUTH_HEADER;
+            if (!this.authHeader) {
+                console.log('⚠️ BLOXROUTE_AUTH_HEADER not found - private transactions unavailable');
+                console.log('💡 Add BLOXROUTE_AUTH_HEADER to environment for MEV protection');
+                this.connected = false;
+                return false;
             }
 
-            // Test connection
-            const headers = this.apiKey ? { 'Authorization': this.apiKey } : {};
-            
+            // Test WebSocket connection with authentication
             try {
-                const response = await axios.get(`${this.baseUrl}/v1/account`, { headers });
-                console.log('✅ bloXroute API connection verified');
+                await this.testConnection();
+                this.connected = true;
+                console.log('✅ Polygon MEV Relay connected via bloXroute');
+                console.log(`📡 Service: polygon_private_tx (front-running protection)`);
+                console.log(`⚡ Speed advantage: 400-1000ms faster than public mempool`);
+                console.log(`🔐 Authentication: Verified`);
+                
+                return true;
             } catch (error) {
-                if (error.response?.status === 401) {
-                    console.log('🔑 Using bloXroute free tier (consider upgrading for higher limits)');
-                } else {
-                    console.log('✅ bloXroute endpoint accessible');
-                }
+                console.log('❌ bloXroute authentication failed:', error.message);
+                console.log('💡 Check your BLOXROUTE_AUTH_HEADER value');
+                this.connected = false;
+                return false;
             }
-
-            this.connected = true;
-            console.log('✅ Polygon MEV Relay connected via bloXroute');
-            console.log(`📡 Service: polygon_private_tx (front-running protection)`);
-            console.log(`⚡ Speed advantage: 400-1000ms faster than public mempool`);
             
-            return true;
         } catch (error) {
             console.error('❌ Failed to initialize Polygon MEV Relay:', error.message);
             this.connected = false;
             return false;
         }
+    }
+
+    async testConnection() {
+        return new Promise((resolve, reject) => {
+            const testWs = new WebSocket(this.wsUrl, {
+                headers: {
+                    'Authorization': this.authHeader
+                }
+            });
+
+            const timeout = setTimeout(() => {
+                testWs.close();
+                reject(new Error('Connection timeout'));
+            }, 5000);
+
+            testWs.on('open', () => {
+                clearTimeout(timeout);
+                testWs.close();
+                resolve(true);
+            });
+
+            testWs.on('error', (error) => {
+                clearTimeout(timeout);
+                reject(error);
+            });
+        });
     }
 
     async submitPrivateTransaction(signedTransaction) {
@@ -53,50 +81,88 @@ class PolygonMEVRelay {
 
             console.log('\n🎯 Submitting private transaction to bloXroute...');
             
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-            
-            if (this.apiKey) {
-                headers['Authorization'] = this.apiKey;
-            }
+            return new Promise((resolve, reject) => {
+                const ws = new WebSocket(this.wsUrl, {
+                    headers: {
+                        'Authorization': this.authHeader
+                    }
+                });
 
-            const payload = {
-                transaction: signedTransaction,
-                blockchain_network: 'Polygon'
-            };
+                const requestId = this.requestId++;
+                const timeout = setTimeout(() => {
+                    ws.close();
+                    reject(new Error('Private transaction submission timeout'));
+                }, 10000);
 
-            console.log('📡 Sending to polygon_private_tx endpoint...');
-            
-            const response = await axios.post(
-                `${this.baseUrl}/v1/polygon_private_tx`,
-                payload,
-                { headers }
-            );
+                ws.on('open', () => {
+                    console.log('📡 Connected to bloXroute WebSocket');
+                    
+                    const request = {
+                        jsonrpc: "2.0",
+                        id: requestId,
+                        method: "polygon_private_tx",
+                        params: {
+                            transaction: signedTransaction
+                        }
+                    };
 
-            console.log('✅ Private transaction submitted successfully!');
-            console.log(`📦 Transaction hash: ${response.data.tx_hash}`);
-            console.log(`🏆 Front-running protection: ACTIVE`);
-            console.log(`⚡ Private mempool routing: ENABLED`);
+                    console.log('📡 Sending to polygon_private_tx method...');
+                    ws.send(JSON.stringify(request));
+                });
 
-            return {
-                success: true,
-                txHash: response.data.tx_hash,
-                response: response.data
-            };
+                ws.on('message', (data) => {
+                    try {
+                        const response = JSON.parse(data.toString());
+                        
+                        if (response.id === requestId) {
+                            clearTimeout(timeout);
+                            ws.close();
+                            
+                            if (response.error) {
+                                console.error('❌ bloXroute API error:', response.error);
+                                resolve({
+                                    success: false,
+                                    error: response.error.message || 'API error',
+                                    code: response.error.code
+                                });
+                            } else {
+                                console.log('✅ Private transaction submitted successfully!');
+                                console.log(`📦 Transaction hash: ${response.result}`);
+                                console.log(`🏆 Front-running protection: ACTIVE`);
+                                console.log(`⚡ Private mempool routing: 400-1000ms faster`);
+                                
+                                resolve({
+                                    success: true,
+                                    txHash: response.result,
+                                    response: response
+                                });
+                            }
+                        }
+                    } catch (parseError) {
+                        clearTimeout(timeout);
+                        ws.close();
+                        reject(new Error('Failed to parse response: ' + parseError.message));
+                    }
+                });
+
+                ws.on('error', (error) => {
+                    clearTimeout(timeout);
+                    reject(new Error('WebSocket error: ' + error.message));
+                });
+
+                ws.on('close', (code, reason) => {
+                    clearTimeout(timeout);
+                    if (code !== 1000) {
+                        reject(new Error(`WebSocket closed unexpectedly: ${code} ${reason}`));
+                    }
+                });
+            });
 
         } catch (error) {
             console.error('❌ Private transaction submission failed:', error.message);
-            
-            // Check for specific bloXroute errors
-            if (error.response?.data) {
-                console.error('API Error:', error.response.data);
-            }
-            
             return {
                 success: false,
-                error: error.message,
-                apiError: error.response?.data
+                error: error.message
             };
         }
     }
@@ -127,7 +193,8 @@ class PolygonMEVRelay {
             service: 'bloXroute polygon_private_tx',
             network: 'Polygon',
             protection: 'Front-running protection',
-            apiKey: this.apiKey ? 'Configured' : 'Free tier'
+            authHeader: this.authHeader ? 'Configured' : 'Missing',
+            endpoint: 'wss://api.blxrbdn.com/ws'
         };
     }
 
