@@ -16,7 +16,7 @@ require("dotenv").config();
 
 const config = require('./config.json')  
 const { getTokenAndContract, getPairContract, calculatePrice, calculatePriceSixAndEighteen, calculatePriceNineAndEighteen, calculatePriceSixAndNine, getEstimatedReturn, getReserves } = require('./helpers/helpers')  
-const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer, mempoolMonitor } = require('./helpers/initialization')  
+const { uFactory, uRouter, sFactory, sRouter, qFactory, qRouter, web3, arbitrage, gasOptimizer, mempoolMonitor, mevRelay } = require('./helpers/initialization')  
 
 // -- .ENV VALUES HERE -- //  
 
@@ -90,6 +90,10 @@ const main = async () => {
     uPair = await getPairContract(qFactory, token0.address, token1.address)  
     sPair = await getPairContract(sFactory, token0.address, token1.address)  
 
+    // Initialize MEV relay for private bundle submission
+    console.log('🚀 Initializing MEV Relay for competitive arbitrage...');
+    await mevRelay.initialize();
+
     // Configure mempool monitoring for our target pair
     mempoolMonitor.addTargetPair(token0.address, token1.address);
     
@@ -105,11 +109,13 @@ const main = async () => {
         await executeArbitrageFlow('Sushiswap Event', token0.address, token1.address);
     })  
 
-    console.log("🔍 Bot Active:");
+    console.log("🔍 MEV Bot Active:");
     console.log("📊 Event-based monitoring: Waiting for swap events...");
     console.log("⚡ Mempool monitoring: Scanning pending transactions...");
     console.log("🎯 Target pair: " + token0.symbol + "/" + token1.symbol);
-    console.log("💰 Min profit threshold: " + (parseFloat(difference) * 100).toFixed(2) + "%\n");
+    console.log("💰 Min profit threshold: " + (parseFloat(difference) * 100).toFixed(2) + "%");
+    console.log("🏆 MEV Relay: " + (mevRelay.isConnected() ? "Connected" : "Disconnected"));
+    console.log("📡 Bundle submission: Private relay (no front-running)\n");
 
 }  
 
@@ -310,31 +316,97 @@ const executeTrade = async (_routerPath, _token0Contract, _token1Contract) => {
     }  
     */  
 
-    // ⚡ OPTIMIZED SINGLE-TRANSACTION EXECUTION WITH DYNAMIC GAS PRICING
+    // 🎯 MEV RELAY BUNDLE EXECUTION - PRIVATE MEMPOOL
     if (config.PROJECT_SETTINGS.isDeployed) {
-        console.log('🚀 Executing optimized flash loan arbitrage...');
+        console.log('🏆 Executing MEV arbitrage bundle...');
         
-        // Single optimized transaction - no approval needed for flash loans
-        const arbitrageTransaction = {
-            'from': account,
-            'to': arbitrage._address,
-            'data': arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).encodeABI()
+        if (!mevRelay.isConnected()) {
+            console.log('⚠️ MEV Relay not connected, falling back to public transaction');
+            
+            // Fallback to public transaction
+            const arbitrageTransaction = {
+                'from': account,
+                'to': arbitrage._address,
+                'data': arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).encodeABI()
+            };
+            
+            const optimizedTx = await gasOptimizer.createOptimizedTransaction(arbitrageTransaction, 'fastest');
+            const signedTx = await web3.eth.accounts.signTransaction(optimizedTx, process.env.DEPLOYMENT_ACCOUNT_KEY);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            console.log(`✅ Public arbitrage tx: ${receipt.transactionHash}`);
+            
+            return receipt;
+        }
+
+        // Create arbitrage opportunity object for bundle construction
+        const opportunity = {
+            tokenAddresses: {
+                USDC: _token0Contract._address,
+                WETH: _token1Contract._address
+            },
+            dex1: { router: startOnQuickswap ? qRouter._address : sRouter._address },
+            dex2: { router: startOnQuickswap ? sRouter._address : qRouter._address },
+            amountIn: amount,
+            direction: startOnQuickswap
         };
-        
-        // Optimize transaction with dynamic gas pricing
-        const optimizedTx = await gasOptimizer.createOptimizedTransaction(arbitrageTransaction, 'fastest');
-        
-        console.log(`⚡ Gas Price: ${web3.utils.fromWei(optimizedTx.gasPrice, 'gwei')} gwei`);
-        console.log(`⚡ Gas Limit: ${optimizedTx.gas}`);
-        
-        // Sign and send single optimized transaction
-        const signedTx = await web3.eth.accounts.signTransaction(optimizedTx, process.env.DEPLOYMENT_ACCOUNT_KEY);
-        
-        // Execute flash loan arbitrage in one transaction
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
-        console.log(`✅ Flash loan arbitrage tx: ${receipt.transactionHash}`);
-        
-        return receipt;
+
+        // Get optimal gas configuration
+        const gasPrices = await gasOptimizer.getCurrentGasPrices();
+        const gasConfig = {
+            gasLimit: 500000, // Flash loan gas limit
+            maxFeePerGas: web3.utils.toWei(gasPrices.fastest.toString(), 'gwei'),
+            maxPriorityFeePerGas: web3.utils.toWei((gasPrices.fastest * 0.1).toString(), 'gwei')
+        };
+
+        try {
+            // Create MEV bundle
+            const bundleData = await mevRelay.createArbitrageBundle(opportunity, gasConfig);
+            
+            // Simulate bundle first
+            const simulation = await mevRelay.simulateBundle(bundleData);
+            if (!simulation.success) {
+                console.log('❌ Bundle simulation failed:', simulation.error);
+                throw new Error('Bundle simulation failed: ' + simulation.error);
+            }
+            
+            console.log(`✅ Bundle simulation successful - estimated profit: ${simulation.profit} wei`);
+            
+            // Submit bundle to MEV relay
+            const submission = await mevRelay.submitBundle(bundleData);
+            
+            if (submission.success) {
+                console.log(`🎯 MEV bundle submitted successfully!`);
+                console.log(`📦 Bundle hash: ${submission.bundleHash}`);
+                console.log(`🎯 Target block: ${submission.targetBlock}`);
+                console.log(`🏆 Protected from front-running - private relay execution`);
+                
+                return {
+                    bundleHash: submission.bundleHash,
+                    targetBlock: submission.targetBlock,
+                    type: 'mev_bundle'
+                };
+            } else {
+                throw new Error('Bundle submission failed: ' + submission.error);
+            }
+            
+        } catch (error) {
+            console.error('❌ MEV bundle execution failed:', error.message);
+            console.log('🔄 Falling back to public transaction...');
+            
+            // Fallback to public transaction
+            const arbitrageTransaction = {
+                'from': account,
+                'to': arbitrage._address,
+                'data': arbitrage.methods.executeTrade(startOnQuickswap, _token0Contract._address, _token1Contract._address, amount).encodeABI()
+            };
+            
+            const optimizedTx = await gasOptimizer.createOptimizedTransaction(arbitrageTransaction, 'fastest');
+            const signedTx = await web3.eth.accounts.signTransaction(optimizedTx, process.env.DEPLOYMENT_ACCOUNT_KEY);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            console.log(`✅ Fallback public tx: ${receipt.transactionHash}`);
+            
+            return receipt;
+        }
     }  
 
 
