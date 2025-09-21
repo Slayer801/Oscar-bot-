@@ -4,7 +4,7 @@ modules = ["nodejs-20"]
 channel = "stable-25_05"
 
 [workflows]
-runButton = "Project"
+runButton = "Run Bot"
 
 [[workflows.workflow]]
 name = "Run Bot"
@@ -15,33 +15,6 @@ mode = "sequential"
 task = "shell.exec"
 args = "node bot.js"
 
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Arbitrage Bot"
-
-[[workflows.workflow]]
-name = "Arbitrage Bot"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-<<<<<<< HEAD
-args = "npm start"
-=======
-args = "node bot.js"
->>>>>>> c3fc8d4b4e0de92d43d82ae2a41b2c48b5e740da
-
-[workflows.workflow.metadata]
-outputType = "console"
-
 [[ports]]
-localPort = 5000
+localPort = 5011
 externalPort = 80
-
-[agent]
-expertMode = true
